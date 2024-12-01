@@ -131,3 +131,69 @@ OBLIVION_FRAMEWORK/
 - **Encryption**: Implement a robust **encryption system** for communication between client and server to prevent detection by IDS/IPS systems or packet sniffers.
 
 ![diagram](https://github.com/Oblivion-Framework/Oblivion/blob/main/image.png)
+
+---
+
+kitty: backend communication
+	listeners [client and server comms]
+		- Implement and test different communication protocols (sockets, named pipes).
+
+avale + syu: client side logic and interaction
+	 modules [keylogger, clipboard, etc]
+	 handlers [data handlers, system handlers, etc]
+	 logs [client/server/error logs]
+	 tests [unit tests, etc]
+		 - Focus on implementing client-side functionality, such as keylogging, clipboard monitoring, and process management.
+		- Develop handlers for processing incoming commands and interacting with system functions.
+		- Monitor and log client-side actions and errors for debugging and analysis.
+		- Write unit tests for client-side modules, ensuring the reliability and accuracy of core functionalities.
+
+syu: server side logic, security, deployment
+	config [server.json, persistence.json]
+	modules [recon, file, process managing]
+	scripts [py scripts general use]
+	docs[readmes, api docs]
+		- Develop deployment scripts for setting up clients on target systems and configuring persistence mechanisms.
+		- Update documentation to ensure clear setup instructions, API references, and module functionalities.
+
+avale + kitty: comm & module integration:
+**Collaborative Areas:**
+
+- Integrating communication mechanisms (e.g., between listeners and modules).
+- Combining backend server-client functionality with specific modules (e.g., keylogger, persistence).
+- Testing communication between client-server modules.
+
+
+syu + kitty + avale: security core funcs / deployment, test & docs:
+**Collaborative Areas:**
+
+- Integrating security measures into the core framework (e.g., encryption, secure communication channels).
+- Ensuring modules like recon and process management work securely.
+- Setting up server-client security mechanisms.
+- Building and deploying clients to target systems.
+- Writing unit tests and integration tests for modules.
+- Updating documentation based on the integration of new features and functionalities.
+
+
+ALL 3:
+- **Initial Setup and Architecture Design:**
+    
+    - **Collaborative Areas:**
+        - Design the framework architecture, discussing how components like the listener, modules, and server-client communication should interact.
+        - Decide on the configuration files, dependencies, and environment variables required for the framework.
+    - **Responsibilities:**
+        - All team members contribute to defining the system architecture, ensuring that each part fits together smoothly and securely.
+- **Integration and Testing:**
+    
+    - **Collaborative Areas:**
+        - Integration of individual modules into the main framework. For example, combining the persistence mechanism with the recon module.
+        - Testing and debugging integration points where multiple components interact (e.g., server-client communication).
+    - **Responsibilities:**
+        - All members will work together to run integration tests and identify potential issues. Ensure that all the features (modules, handlers, listeners) work as expected in the system.
+- **Deployment & Maintenance:**
+    
+    - **Collaborative Areas:**
+        - Finalize deployment processes and setup procedures.
+        - Ensure the system is ready for real-world use and handle any bugs or issues during deployment.
+    - **Responsibilities:**
+        - The team will collaborate to finalize deployment scripts, update any necessary configurations, and ensure that everything runs smoothly in both client and server environments.

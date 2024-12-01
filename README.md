@@ -129,3 +129,5 @@ OBLIVION_FRAMEWORK/
 
 ### Additional Thoughts:
 - **Encryption**: Implement a robust **encryption system** for communication between client and server to prevent detection by IDS/IPS systems or packet sniffers.
+
+![diagram](https://github.com/Oblivion-Framework/Oblivion/blob/main/image.png)

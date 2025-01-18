@@ -3,11 +3,11 @@
 #include <string>
 #include <zmq.hpp>
 #include <sstream>
-
+#include <sodium.h>
 
 // install zeromq and cppzmq package
-// -lzmq flag may be needded
-
+// -lzmq flag may be needed and -lsodium
+// g++ client.cpp -lzmq -lsodium -o client
 
 int modularExp(int base, int exp, int mod)
 {
@@ -26,24 +26,42 @@ int modularExp(int base, int exp, int mod)
 	return result;
 }
 
-
-std::string Encrypt(std::string message, int key)
+std::string Encrypt(std::string message, unsigned char* key, unsigned char* nonce)
 {
-	std::vector<unsigned char> cipher;
-	for(int i = 0; i < message.size(); ++i)
+	std::vector<unsigned char>ciphertext(message.size() + crypto_aead_chacha20poly1305_ABYTES);
+	unsigned long long ciphertext_len;
+	
+	std::vector<unsigned char> msg(message.begin(), message.end());
+	
+	int status = crypto_aead_xchacha20poly1305_ietf_encrypt(ciphertext.data(), &ciphertext_len, msg.data(), msg.size(), nullptr, 0, nullptr, nonce, key);
+	if(status)
 	{
-		cipher.emplace_back(static_cast<unsigned char>(message[i]) ^ static_cast<unsigned char>(key));
+		std::cout << "[-] Error encrypting string, terminating now!\n";
+		exit(-1);
 	}
-	return std::string(cipher.begin(), cipher.end());
+	std::ostringstream oss;
+	for(auto byte: ciphertext)
+	{
+		oss << std::hex << static_cast<int>(byte);
+	}
+	//return oss.str();
+	
+	return std::string(ciphertext.begin(), ciphertext.end());
+
 }
 
-
-std::string Decrypt(std::string cipher, int key)
+std::string Decrypt(std::string ciphertext, unsigned char* key, unsigned char* nonce)
 {
-	std::vector<unsigned char> plaintext;
-	for(int i = 0; i < cipher.size(); ++i)
+	std::vector<unsigned char>plaintext(ciphertext.size() - crypto_aead_chacha20poly1305_ABYTES);
+	// crypto_aead_chacha20poly1305_ABYTES is 16
+	unsigned long long message_len;
+	std::vector<unsigned char>cphrtxt(ciphertext.begin(), ciphertext.end());
+
+	int status = crypto_aead_xchacha20poly1305_ietf_decrypt(plaintext.data(), &message_len, nullptr, cphrtxt.data(), cphrtxt.size(), nullptr, 0, nonce, key);
+	if(status)
 	{
-		plaintext.emplace_back(static_cast<unsigned char>(cipher[i]) ^ static_cast<unsigned char>(key));
+		std::cout << "Error decrypting string, terminating now!\n";
+		exit(-1);
 	}
 	return std::string(plaintext.begin(), plaintext.end());
 }
@@ -64,10 +82,10 @@ int main()
 	}
 	
 	//start initializing diffie hellman
-	std::random_device dev;
-	std::mt19937 rng(dev());
-	std::uniform_int_distribution<int> gen(1, 100);
-	
+	std::random_device Device;
+	std::mt19937 Generator(Device());
+	std::uniform_int_distribution<int> Distribution(0, 100);
+	// start initializing diffie hellman (really)
 	socket.recv(message, zmq::recv_flags::none);
 	std::string messageCast(static_cast<char*>(message.data()), message.size());
 	
@@ -75,7 +93,7 @@ int main()
     
     	std::string num1;
     	std::string num2;
-    	int PrivKey = gen(rng);
+    	int PrivKey = Distribution(Generator);
 
     	std::getline(iss, num1, '+');
     	std::getline(iss, num2, '+');	
@@ -100,14 +118,22 @@ int main()
 	int Secret = modularExp(Shared, PrivKey, stol(num2));
 
 	// finish initializing diffie hellman
+	//std::mt19937 SeededGenerator(1); // Secret
+	std::vector<unsigned char>key(32, static_cast<unsigned char>(Secret));
+	std::vector<unsigned char>nonce(24, static_cast<unsigned char>(Secret));
+	//std::generate(key.begin(), key.end(), [&](){return static_cast<unsigned char>(Distribution(SeededGenerator));});
+	//std::generate(nonce.begin(), nonce.end(), [&](){return static_cast<unsigned char>(Distribution(SeededGenerator));});
 	
 	while(true) // this is loop shit
 	{
 		socket.recv(message, zmq::recv_flags::none);
-		std::cout << Decrypt(message.to_string(), Secret) << std::endl;
+		//std::cout << Decrypt(message.to_string(), Secret) << std::endl;
 		
+		std::cout << Decrypt(message.to_string(), key.data(), nonce.data()) << std::endl;
+
 		std::string response = "[Insert Command Output]";
 
-		zmq::message_t resp = (zmq::message_t)(Encrypt(response, Secret));
+		zmq::message_t resp = (zmq::message_t)(Encrypt(response, key.data(), nonce.data()));
 		socket.send(resp, zmq::send_flags::none);
 	}
+}

@@ -33,13 +33,13 @@ int main() {
         }
 		
 		buffer[bytesRead] = '\0';
-        std::cout << "Received: " << buffer << std::endl;
+        printf("Recieved: %s\n", buffer);
 		
 		char* response = "Command output: " + (buffer);
 		
         if(!WriteFile(hPipe, response, sizeof(response), &bytesWritten, NULL))
 		{
-            std::cerr << "WriteFile failed: " << GetLastError() << std::endl;
+            printf("WriteFile failed\n");
             break;
         }
 	}

@@ -4,10 +4,12 @@
 #include <zmq.hpp>
 #include <sstream>
 #include <sodium.h>
+#include <curl/curl.h>
+
 
 // install zeromq and cppzmq package
 // -lzmq flag may be needed and -lsodium
-// g++ client.cpp -lzmq -lsodium -o client
+// g++ client.cpp -lzmq -lsodium -lcurl -o client
 
 int modularExp(int base, int exp, int mod)
 {
@@ -67,6 +69,13 @@ std::string Decrypt(std::string ciphertext, unsigned char* key, unsigned char* n
 }
 
 
+size_t WriteCallback(void* contents, size_t size, size_t nmemb, void* userp) {
+    ((std::string*)userp)->append((char*)contents, size * nmemb);
+    return size * nmemb;
+}
+
+
+
 int main()
 {
 	zmq::context_t ctx(1);
@@ -80,7 +89,7 @@ int main()
 		ctx.close();
 		return 1;
 	}
-	
+
 	//start initializing diffie hellman
 	std::random_device Device;
 	std::mt19937 Generator(Device());
@@ -124,6 +133,30 @@ int main()
 	//std::generate(key.begin(), key.end(), [&](){return static_cast<unsigned char>(Distribution(SeededGenerator));});
 	//std::generate(nonce.begin(), nonce.end(), [&](){return static_cast<unsigned char>(Distribution(SeededGenerator));});
 	
+
+	CURL *curl;
+	CURLcode res;
+	std::string readBuffer;
+	curl_global_init(CURL_GLOBAL_DEFAULT);
+	curl = curl_easy_init();
+	if(curl)
+	{
+        	curl_easy_setopt(curl, CURLOPT_URL, "http://ipinfo.io/ip");
+        	curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, WriteCallback);
+        	curl_easy_setopt(curl, CURLOPT_WRITEDATA, &readBuffer);
+        	res = curl_easy_perform(curl);
+        	if(res == CURLE_OK)
+		{
+            		socket.send((zmq::message_t)(readBuffer), zmq::send_flags::none);  //std::cout << "Public IP Address: " << readBuffer << std::endl;
+        	}
+
+        	curl_easy_cleanup(curl);
+    	}
+    	curl_global_cleanup();
+	
+
+	//socket.send(zmq::str_buffer("Fuck you"), zmq::send_flags::none);
+
 	while(true) // this is loop shit
 	{
 		socket.recv(message, zmq::recv_flags::none);

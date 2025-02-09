@@ -68,6 +68,7 @@ std::string Decrypt(std::string ciphertext, unsigned char* key, unsigned char* n
 
 int main()
 {
+	int counter = 0;
 	zmq::context_t ctx(1);
 	zmq::socket_t socket(ctx, zmq::socket_type::pair);
 	socket.bind("tcp://127.0.0.1:4444");
@@ -106,6 +107,18 @@ int main()
 	std::vector<unsigned char>nonce(24, static_cast<unsigned char>(Secret));
 
 	std::string buffer;
+	zmq::message_t address;
+	
+
+	if(socket.recv(address, zmq::recv_flags::none))
+	{
+		std::cout << "Connected to " << address.to_string() << std::endl;
+		counter++;
+	}
+	else
+	{
+		std::cout << "Could not retrieve machine IP!" << std::endl;
+	}
 
 	while(true)
 	{

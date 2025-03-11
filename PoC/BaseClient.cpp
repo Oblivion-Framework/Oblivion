@@ -2,14 +2,11 @@
 #include <random>
 #include <string>
 #include <zmq.hpp>
-#include <sstream>
 #include <sodium.h>
-#include <curl/curl.h>
-
 
 // install zeromq and cppzmq package
 // -lzmq flag may be needed and -lsodium
-// g++ client.cpp -lzmq -lsodium -lcurl -o client
+// g++ client.cpp -lzmq -lsodium -o client
 
 int modularExp(int base, int exp, int mod)
 {
@@ -18,7 +15,6 @@ int modularExp(int base, int exp, int mod)
 	{
 		if(exp & 1)
 		{
-
 			result = (result * base) % mod;
 			result = (result * result) % mod;
 		}
@@ -26,6 +22,44 @@ int modularExp(int base, int exp, int mod)
 		exp >>= 2;
 	}
 	return result;
+}
+
+int DiffieHellman(std::mt19937& Generator, std::uniform_int_distribution<int>& Distribution, zmq::socket_t* socket)
+{
+	std::string num1;
+    std::string num2;
+
+	int PrivKey = Distribution(Generator);
+
+	zmq::message_t keys;
+
+	if(!socket->recv(keys, zmq::recv_flags::none))
+	{
+		return -1;
+	}
+
+	std::string messageCast(static_cast<char*>(keys.data()), keys.size());
+	std::istringstream iss(messageCast);
+
+	std::getline(iss, num1, '+');
+	std::getline(iss, num2, '+');
+
+	int PubKey = modularExp(stol(num1), PrivKey, stol(num2));
+	
+	keys = (zmq::message_t)(std::to_string(PubKey));
+
+	if(!socket->send(keys, zmq::send_flags::none))
+	{
+		return 1;
+	}
+
+	if(!socket->recv(keys, zmq::recv_flags::none))
+	{
+		return 1;
+	}
+	int Shared = stol(keys.to_string());
+	
+	return modularExp(Shared, PrivKey, stol(num2));
 }
 
 std::string Encrypt(std::string message, unsigned char* key, unsigned char* nonce)
@@ -41,15 +75,7 @@ std::string Encrypt(std::string message, unsigned char* key, unsigned char* nonc
 		std::cout << "[-] Error encrypting string, terminating now!\n";
 		exit(-1);
 	}
-	std::ostringstream oss;
-	for(auto byte: ciphertext)
-	{
-		oss << std::hex << static_cast<int>(byte);
-	}
-	//return oss.str();
-	
 	return std::string(ciphertext.begin(), ciphertext.end());
-
 }
 
 std::string Decrypt(std::string ciphertext, unsigned char* key, unsigned char* nonce)
@@ -68,19 +94,46 @@ std::string Decrypt(std::string ciphertext, unsigned char* key, unsigned char* n
 	return std::string(plaintext.begin(), plaintext.end());
 }
 
+void HandleConnection(zmq::socket_t* socket, std::vector<unsigned char>& key, std::vector<unsigned char>& nonce)
+{
+	zmq::message_t message;
+	while(true)
+	{
+		if(!socket->recv(message, zmq::recv_flags::none))
+		{
+			std::cout << "[-] Send failed!\n";
+			socket->close();
+			break;
+		}
 
-size_t WriteCallback(void* contents, size_t size, size_t nmemb, void* userp) {
-    ((std::string*)userp)->append((char*)contents, size * nmemb);
-    return size * nmemb;
+		std::string response = Decrypt(message.to_string(), key.data(), nonce.data());
+		if(response == "terminate")
+		{
+			socket->close();
+			break;
+
+		}
+
+		zmq::message_t resp = (zmq::message_t)(Encrypt(response, key.data(), nonce.data()));
+		if(!socket->send(resp, zmq::send_flags::none))
+		{
+			std::cout << "[-] Receive failed!\n";
+			socket->close();
+			break;
+		}
+	}
 }
-
-
 
 int main()
 {
 	zmq::context_t ctx(1);
 	zmq::socket_t socket(ctx, zmq::socket_type::pair);
-	socket.connect("tcp://127.0.0.1:4444");
+
+	std::random_device Device;
+	std::mt19937 Generator(Device());
+	std::uniform_int_distribution<int> Distribution(0, 100);
+
+	socket.connect("tcp://127.0.0.1:6666");
 	zmq::message_t message;
 	if(!socket.send(zmq::str_buffer("zerodium"), zmq::send_flags::none))
 	{
@@ -90,83 +143,18 @@ int main()
 		return 1;
 	}
 
-	//start initializing diffie hellman
-	std::random_device Device;
-	std::mt19937 Generator(Device());
-	std::uniform_int_distribution<int> Distribution(0, 100);
-	// start initializing diffie hellman (really)
-	socket.recv(message, zmq::recv_flags::none);
-	std::string messageCast(static_cast<char*>(message.data()), message.size());
-	
-	std::istringstream iss(messageCast);
-    
-    	std::string num1;
-    	std::string num2;
-    	int PrivKey = Distribution(Generator);
+	int Secret = DiffieHellman(Generator, Distribution, &socket);
 
-    	std::getline(iss, num1, '+');
-    	std::getline(iss, num2, '+');	
-
-	int PubKey = modularExp(stol(num1), PrivKey, stol(num2));
-	//std::cout << PubKey << " " << stol(num1) << " " << stol(num2) << " " << PrivKey;
-	
-	message = (zmq::message_t)(std::to_string(PubKey));
-
-	zmq::send_result_t sent = socket.send(message, zmq::send_flags::none);
-	if(!*sent)
+	if(Secret == -1)
 	{
-		std::cout << "[-] Failed to send Public Key, error code is: " << zmq_errno() << std::endl;
+		std::cout << "[-] Diffie hellman failed!\n";
 		socket.close();
 		ctx.close();
 		return 1;
 	}
-
-	socket.recv(message, zmq::recv_flags::none);
-	int Shared = stol(message.to_string());
-	
-	int Secret = modularExp(Shared, PrivKey, stol(num2));
-
-	// finish initializing diffie hellman
-	//std::mt19937 SeededGenerator(1); // Secret
 	std::vector<unsigned char>key(32, static_cast<unsigned char>(Secret));
 	std::vector<unsigned char>nonce(24, static_cast<unsigned char>(Secret));
-	//std::generate(key.begin(), key.end(), [&](){return static_cast<unsigned char>(Distribution(SeededGenerator));});
-	//std::generate(nonce.begin(), nonce.end(), [&](){return static_cast<unsigned char>(Distribution(SeededGenerator));});
-	
 
-	CURL *curl;
-	CURLcode res;
-	std::string readBuffer;
-	curl_global_init(CURL_GLOBAL_DEFAULT);
-	curl = curl_easy_init();
-	if(curl)
-	{
-        	curl_easy_setopt(curl, CURLOPT_URL, "http://ipinfo.io/ip");
-        	curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, WriteCallback);
-        	curl_easy_setopt(curl, CURLOPT_WRITEDATA, &readBuffer);
-        	res = curl_easy_perform(curl);
-        	if(res == CURLE_OK)
-		{
-            		socket.send((zmq::message_t)(readBuffer), zmq::send_flags::none);  //std::cout << "Public IP Address: " << readBuffer << std::endl;
-        	}
-
-        	curl_easy_cleanup(curl);
-    	}
-    	curl_global_cleanup();
-	
-
-	//socket.send(zmq::str_buffer("Fuck you"), zmq::send_flags::none);
-
-	while(true) // this is loop shit
-	{
-		socket.recv(message, zmq::recv_flags::none);
-		//std::cout << Decrypt(message.to_string(), Secret) << std::endl;
-		
-		std::cout << Decrypt(message.to_string(), key.data(), nonce.data()) << std::endl;
-
-		std::string response = "[Insert Command Output]";
-
-		zmq::message_t resp = (zmq::message_t)(Encrypt(response, key.data(), nonce.data()));
-		socket.send(resp, zmq::send_flags::none);
-	}
+	HandleConnection( &socket,  key, nonce);
+	ctx.close();
 }
